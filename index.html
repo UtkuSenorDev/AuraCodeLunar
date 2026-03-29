@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AYAP-3: Global Multiplayer</title>
+    <title>LUNAR-3: Global Multiplayer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- MQTT.js Kütüphanesi (Sıfır kurulum multiplayer için) -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
@@ -103,7 +103,7 @@
     <!-- SOL: OYUN ALANI -->
     <div class="flex-1 flex flex-col relative">
         <div class="panel p-2 md:p-4 flex justify-between items-center text-lg md:text-2xl z-10 absolute top-0 left-0 w-full hidden" id="statsPanel">
-            <div class="text-yellow-400 font-bold border-r-2 border-yellow-400 pr-4 mr-2" id="timerUI">01:30</div>
+            <div class="text-yellow-400 font-bold border-r-2 border-yellow-400 pr-4 mr-2" id="timerUI">02:00</div>
             <div>🚀 GÖVDE: <span id="stat-hull">100</span>%</div>
             <div>💨 OKSİJEN: <span id="stat-oxy">100</span>%</div>
             <div>⚡ ENERJİ: <span id="stat-pwr">100</span>%</div>
@@ -166,9 +166,9 @@
     <!-- Başlangıç Ekranı -->
     <div id="startScreen" class="absolute inset-0 bg-[#050505] z-40 flex flex-col items-center justify-center p-8 text-center crt">
         <input type="password" id="devInput" placeholder="KOD" maxlength="4" class="absolute top-4 right-4 bg-gray-900 border-2 border-gray-600 text-yellow-400 p-2 w-24 text-center tracking-widest outline-none z-50">
-        <h1 class="text-6xl md:text-8xl mb-10 text-[#33ff33] font-bold tracking-widest" style="text-shadow: 0 0 20px #33ff33;">AYAP-3</h1>
+        <h1 class="text-6xl md:text-8xl mb-10 text-[#33ff33] font-bold tracking-widest" style="text-shadow: 0 0 20px #33ff33;">LUNAR-3</h1>
         <p class="text-xl max-w-2xl text-gray-400 mb-8 leading-relaxed">
-            Uzay gemisi "AYAP-3" otopilotta Ay'a doğru ilerliyor.<br><br>
+            Uzay gemisi "LUNAR-3" otopilotta Ay'a doğru ilerliyor.<br><br>
             Arızaları diğer mürettebat üyeleriyle birlikte çözün. Biriniz tamir ettiğinde herkes için düzelecektir.
         </p>
         <input type="text" id="playerNameInput" placeholder="İSMİNİ GİR" maxlength="12" class="bg-gray-900 border-4 border-[#33ff33] text-[#33ff33] p-4 text-3xl mb-6 w-80 text-center uppercase tracking-widest placeholder-green-800">
@@ -230,6 +230,7 @@
 
     <!-- Geliştirici Araçları -->
     <div id="devTools" class="hidden absolute top-4 right-4 z-50">
+        <div class="bg-black/80 text-yellow-400 p-2 mb-2 text-sm border border-yellow-400 text-right">Harita Değiştir: [M] Tuşu</div>
         <button id="exportBtn" class="bg-red-600 text-white font-bold py-2 px-4 border-2 border-white hover:bg-red-500 cursor-pointer shadow-[0_0_10px_red]">SINIRLARI İNDİR (.txt)</button>
     </div>
 
@@ -237,18 +238,19 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const guideContent = document.getElementById('guideContent');
-    const mapImage = new Image();
-    mapImage.src = 'gemi.png';
-    let mapW = 1600; 
-    let mapH = 1066;
+    
+    // Haritaları oyun başında hazırda bekleterek yüklenme gecikmesini (donmayı) önlüyoruz
+    const maps = {
+        gemi: { img: new Image(), w: 1600, h: 1066 },
+        ay: { img: new Image(), w: 1920, h: 1080 }
+    };
+    maps.gemi.img.src = 'gemi.png';
+    maps.ay.img.src = 'ay_yüzeyi.png';
     let currentMap = 'gemi'; // Hangi haritadayız: 'gemi' veya 'ay'
 
-    mapImage.onload = () => {
-        // Eğer harita ay ise resmin kendi doğal boyutlarını alalım
-        if (currentMap === 'ay') {
-            mapW = mapImage.naturalWidth || 1920;
-            mapH = mapImage.naturalHeight || 1080;
-        }
+    maps.ay.img.onload = () => {
+        maps.ay.w = maps.ay.img.naturalWidth || 1920;
+        maps.ay.h = maps.ay.img.naturalHeight || 1080;
     };
 
     function resize() {
@@ -268,7 +270,7 @@
 
     // --- GENEL DURUM & KONTROLLER ---
     let gameState = 'START'; 
-    let chapterTimeLeft = 90; // 1.5 Dakikalık Sayaç (Saniye cinsinden)
+    let chapterTimeLeft = 120; // 2 Dakikalık Sayaç (Saniye cinsinden)
     let lastCrisisRoom = null; 
     const keys = { w: false, a: false, s: false, d: false, e: false };
     let ePressed = false; 
@@ -285,6 +287,16 @@
         if (gameState === 'LANDING_MINIGAME' && e.code === 'Space') {
             e.preventDefault();
             checkLandingHit();
+        }
+        
+        // GELİŞTİRİCİ MODU: Harita Değiştirme Kısayolu (M)
+        if (devMode && key === 'm') {
+            currentMap = currentMap === 'gemi' ? 'ay' : 'gemi';
+            if (currentMap === 'gemi') {
+                player.x = 800; player.y = 275;
+            } else {
+                player.x = 420; player.y = 350;
+            }
         }
     });
 
@@ -363,27 +375,35 @@
     const obstacles = [];
 
     // TXT Dosyasından sınırları otomatik çek (Live Server vb. yerel sunucu gerektirir)
-    fetch('banned_locations.txt')
-        .then(response => {
-            if (!response.ok) throw new Error("TXT dosyası bulunamadı");
-            return response.text();
-        })
-        .then(text => {
-            const regex = /\{\s*x1:\s*(-?\d+),\s*y1:\s*(-?\d+),\s*x2:\s*(-?\d+),\s*y2:\s*(-?\d+)\s*\}/g;
-            let match;
-            while ((match = regex.exec(text)) !== null) {
-                obstacles.push({
-                    x1: parseInt(match[1]),
-                    y1: parseInt(match[2]),
-                    x2: parseInt(match[3]),
-                    y2: parseInt(match[4])
-                });
-            }
-            console.log(obstacles.length + " adet sınır txt dosyasından otomatik yüklendi.");
-        })
-        .catch(err => {
-            console.log("banned_locations.txt henüz yok veya sunucu üzerinden çalışmıyor.");
-        });
+    function loadObstacles(filename, defaultMap) {
+        fetch(filename)
+            .then(response => {
+                if (!response.ok) throw new Error("TXT dosyası bulunamadı: " + filename);
+                return response.text();
+            })
+            .then(text => {
+                const regex = /\{\s*(?:map:\s*'([^']+)',\s*)?x1:\s*(-?\d+),\s*y1:\s*(-?\d+),\s*x2:\s*(-?\d+),\s*y2:\s*(-?\d+)\s*\}/g;
+                let match;
+                let count = 0;
+                while ((match = regex.exec(text)) !== null) {
+                    obstacles.push({
+                        map: match[1] || defaultMap,
+                        x1: parseInt(match[2]),
+                        y1: parseInt(match[3]),
+                        x2: parseInt(match[4]),
+                        y2: parseInt(match[5])
+                    });
+                    count++;
+                }
+                console.log(count + " adet sınır " + filename + " dosyasından otomatik yüklendi.");
+            })
+            .catch(err => {
+                console.log(filename + " henüz yok veya sunucu üzerinden çalışmıyor.");
+            });
+    }
+
+    loadObstacles('banned_locations.txt', 'gemi');
+    loadObstacles('banned_locations_ay.txt', 'ay');
 
     let rooms = [
         { id: 'kafeterya', name: "KAFETERYA", tintRect: {x: 80, y: 80, w: 370, h: 300}, termPoint: {x: 240, y: 215} },
@@ -456,7 +476,7 @@
 
     // --- GELİŞTİRİCİ MODU VE SINIR ÇİZİMİ ---
     document.getElementById('devInput').addEventListener('input', function(e) {
-        if(e.target.value === '0525') {
+        if(e.target.value === '1212') {
             devMode = true;
             e.target.style.borderColor = '#33ff33';
             e.target.style.color = '#33ff33';
@@ -468,15 +488,15 @@
     });
 
     document.getElementById('exportBtn').addEventListener('click', function() {
-        let text = "MAUSE İLE ÇİZİLEN SINIRLAR (Kopyalayıp koda yapıştırabilirsin):\n\n";
-        customObstacles.forEach(obs => {
+        let text = "MAUSE İLE " + (currentMap === 'ay' ? "AY YÜZEYİNE" : "GEMİ İÇİNE") + " ÇİZİLEN SINIRLAR:\n\n";
+        customObstacles.filter(o => o.map === currentMap).forEach(obs => {
             text += `{ x1: ${obs.x1}, y1: ${obs.y1}, x2: ${obs.x2}, y2: ${obs.y2} },\n`;
         });
         const blob = new Blob([text], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'banned_locations.txt';
+        a.download = currentMap === 'ay' ? 'banned_locations_ay.txt' : 'banned_locations.txt';
         a.click();
     });
 
@@ -493,7 +513,7 @@
         if (devClickStep === 1) {
             devTempX = worldX; devTempY = worldY; devClickStep = 2;
         } else {
-            let obs = { x1: devTempX, y1: devTempY, x2: worldX, y2: worldY };
+            let obs = { map: currentMap, x1: devTempX, y1: devTempY, x2: worldX, y2: worldY };
             // Çizilen kutuyu ana listeye ekle (anında duvar olur) ve kayıt listesine al
             obstacles.push(obs); customObstacles.push(obs); devClickStep = 1;
         }
@@ -583,7 +603,7 @@
                 
                 guideContent.innerHTML = `SİSTEM BAŞLATILDI...\nOtopilot devrede. Rota: Ay Yörüngesi.\n\nHoş geldin, ${player.name}.\nDiğer mürettebat üyeleriyle senkronize edildin.\n\nGörevlerin:\n1. Gemi içinde devriye at.\n2. Arıza çıktığında odaya koş ve [E] ile tamir et.\n3. Sen tamir edersen herkes için çözülür!`;
                 
-                chapterTimeLeft = 90; // 1.5 dakikayı aktif et
+                chapterTimeLeft = 120; // 2 dakikayı aktif et
                 gameState = 'PLAYING';
             }
         }, 1000);
@@ -609,12 +629,12 @@
             document.getElementById('startScreen').classList.add('hidden');
             
             const initialStory = [
-                { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "AYAP-3, duyuyor musunuz? Sinyal senkronizasyonu tamamlandı." },
+                { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "LUNAR-3, duyuyor musunuz? Sinyal senkronizasyonu tamamlandı." },
                 { speaker: "MÜRETTEBAT", color: "text-[#33ff33]", border: "border-[#33ff33]", text: "Buradayız Merkez. Bütün sistemler çevrimiçi." },
                 { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "Görevinizi tekrar hatırlatıyorum: Ay yüzeyine inmek, çevresel verileri toplamak ve işleyip Dünya'ya geri yollamak." },
                 { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "Rotanız üzerinde uzay anomalileri ve gemi içi donanımsal arıza ihtimalleri saptandı." },
                 { speaker: "MÜRETTEBAT", color: "text-[#33ff33]", border: "border-[#33ff33]", text: "Anlaşıldı. Diğer mürettebatla omuz omuza verip arızalara anında müdahale edeceğiz." },
-                { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "Şans sizinle olsun AYAP-3. İniş prosedürü başlatılıyor. İletişim sonlanıyor..." }
+                { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "Şans sizinle olsun LUNAR-3. İniş prosedürü başlatılıyor. İletişim sonlanıyor..." }
             ];
             
             startStory(initialStory, startCountdown);
@@ -714,10 +734,12 @@
         
         // Ay yüzeyi harita sınırları
         if (currentMap === 'ay') {
-            if (newX < 20 || newX > mapW - 20 || newY < 20 || newY > mapH - 20) return false;
+            if (newX < 20 || newX > maps.ay.w - 20 || newY < 20 || newY > maps.ay.h - 20) return false;
         }
 
         for (const obstacle of obstacles) {
+            if (obstacle.map && obstacle.map !== currentMap) continue; // Sadece aktif haritanın sınırlarını engelle
+            
             // Ters girilme ihtimaline karşı güvenli alan (min/max) hesaplaması
             const obsMinX = Math.min(obstacle.x1, obstacle.x2);
             const obsMaxX = Math.max(obstacle.x1, obstacle.x2);
@@ -1178,8 +1200,8 @@
         setTimeout(() => {
             successScreen.classList.add('hidden');
             startStory([
-                { speaker: "MÜRETTEBAT", color: "text-[#33ff33]", border: "border-[#33ff33]", text: `Merkez, burası AYAP-3. Ay yüzeyine başarılı bir şekilde iniş yapıldı.` },
-                { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "Harika iş çıkardınız AYAP-3! Sinyal güçlü ve stabil. Tüm veriler sağlıklı bir şekilde akıyor." },
+                { speaker: "MÜRETTEBAT", color: "text-[#33ff33]", border: "border-[#33ff33]", text: `Merkez, burası LUNAR-3. Ay yüzeyine başarılı bir şekilde iniş yapıldı.` },
+                { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "Harika iş çıkardınız LUNAR-3! Sinyal güçlü ve stabil. Tüm veriler sağlıklı bir şekilde akıyor." },
                 { speaker: "DÜNYA (MERKEZ)", color: "text-[#33ccff]", border: "border-[#33ccff]", text: "Şimdi yüzey keşif modülünü devreye sokun. Bir sonraki aşamaya geçiyoruz..." }
             ], showChapterThree);
             
@@ -1195,25 +1217,24 @@
         setTimeout(() => {
             c3Screen.style.opacity = '1';
             
-            // Birkaç saniye sonra ekran kararır ve yeni harita yüklenir
             setTimeout(() => {
+                // Ekran tamamen siyahken (arkada) haritayı değiştir
+                startMoonMission(); 
                 c3Screen.style.opacity = '0';
                 setTimeout(() => {
                     c3Screen.classList.add('hidden');
-                    startMoonMission();
                 }, 1000);
-            }, 4000);
+            }, 3000);
         }, 100);
     }
 
     function startMoonMission() {
         currentMap = 'ay';
-        mapImage.src = 'ay_yüzeyi.png';
         
         player.x = 420; // Roketin altı (Ay yüzeyi resmindeki yaklaşık koordinat)
         player.y = 350; 
 
-        obstacles.length = 0; // Geminin duvarlarını temizle
+        // obstacles.length = 0; // ARTIK TEMİZLEMİYORUZ, ÇÜNKÜ YUKARIDA .MAP İLE FİLTRELENİYOR
         rooms.length = 0; // Odaları sil
         activeCrisis = null;
         
@@ -1312,79 +1333,84 @@
                 player.lastStepFrame = 0;
             }
 
-            if (!activeCrisis && currentMap === 'gemi') {
-                nextCrisisTimer--;
-                if (nextCrisisTimer <= 0) {
-                    if (devMode) {
-                        nextCrisisTimer = 60 * 5; // Geliştirici modundayken görev (kriz) çıkmasını tamamen engelle
-                    } else if (isPeaceTime) {
-                        isPeaceTime = false;
-                        nextCrisisTimer = 60 * (Math.floor(Math.random() * 5) + 3); 
-                        guideContent.innerHTML += `\n\n<span class='text-yellow-400'>[DİKKAT] Yeni anomaliler tespit ediliyor. Lütfen hazırda bekleyin...</span>`;
-                        guideContent.scrollTop = guideContent.scrollHeight;
-                    } else {
-                        // Yeni Kriz Başlat
-                        playAlertSound(); // Yerel üretilen krizlerde alarm çal
-                        
-                        let randomIndex;
-                        let limit = 0;
-                        do {
-                            randomIndex = Math.floor(Math.random() * crisisScenarios.length);
-                            limit++;
-                        } while (crisisScenarios[randomIndex].roomId === lastCrisisRoom && limit < 10);
-                        
-                        activeCrisis = { ...crisisScenarios[randomIndex] };
-                        lastCrisisRoom = activeCrisis.roomId;
-                        crisisGraceTimer = 60 * 22; // 22 Saniye
-                        
-                        if(mqttClient) {
-                            mqttClient.publish(globalTopic, JSON.stringify({ 
-                                type: 'SPAWN_CRISIS', 
-                                id: clientId, 
-                                crisisIndex: randomIndex 
-                            }));
-                        }
-                        
-                        guideContent.innerHTML = `\n\n<span class='text-red-500 font-bold'>[ACİL ALARM] ${activeCrisis.name}\n${activeCrisis.desc}\n(Kaynak kaybı <span id="crisisTimerUI">22</span> saniye içinde başlayacak)</span>`;
-                        guideContent.scrollTop = guideContent.scrollHeight;
-                    }
-                }
-                document.getElementById('interactionPrompt').classList.add('hidden');
-            } else {
-                // Eğer Kriz varsa ve Grace Period (Müdahale Süresi) bitmediyse geri say
-                if (crisisGraceTimer > 0) {
-                    crisisGraceTimer--;
-                    if (crisisGraceTimer % 60 === 0) {
-                        let timerUI = document.getElementById('crisisTimerUI');
-                        if(timerUI) {
-                            timerUI.innerText = Math.ceil(crisisGraceTimer / 60);
+            if (currentMap === 'gemi') {
+                if (!activeCrisis) {
+                    nextCrisisTimer--;
+                    if (nextCrisisTimer <= 0) {
+                        if (devMode) {
+                            nextCrisisTimer = 60 * 5; // Geliştirici modundayken görev (kriz) çıkmasını tamamen engelle
+                        } else if (isPeaceTime) {
+                            isPeaceTime = false;
+                            nextCrisisTimer = 60 * (Math.floor(Math.random() * 5) + 3); 
+                            guideContent.innerHTML += `\n\n<span class='text-yellow-400'>[DİKKAT] Yeni anomaliler tespit ediliyor. Lütfen hazırda bekleyin...</span>`;
+                            guideContent.scrollTop = guideContent.scrollHeight;
+                        } else {
+                            // Yeni Kriz Başlat
+                            playAlertSound(); // Yerel üretilen krizlerde alarm çal
+                            
+                            let randomIndex;
+                            let limit = 0;
+                            do {
+                                randomIndex = Math.floor(Math.random() * crisisScenarios.length);
+                                limit++;
+                            } while (crisisScenarios[randomIndex].roomId === lastCrisisRoom && limit < 10);
+                            
+                            activeCrisis = { ...crisisScenarios[randomIndex] };
+                            lastCrisisRoom = activeCrisis.roomId;
+                            crisisGraceTimer = 60 * 22; // 22 Saniye
+                            
+                            if(mqttClient) {
+                                mqttClient.publish(globalTopic, JSON.stringify({ 
+                                    type: 'SPAWN_CRISIS', 
+                                    id: clientId, 
+                                    crisisIndex: randomIndex 
+                                }));
+                            }
+                            
+                            guideContent.innerHTML = `\n\n<span class='text-red-500 font-bold'>[ACİL ALARM] ${activeCrisis.name}\n${activeCrisis.desc}\n(Kaynak kaybı <span id="crisisTimerUI">22</span> saniye içinde başlayacak)</span>`;
+                            guideContent.scrollTop = guideContent.scrollHeight;
                         }
                     }
+                    document.getElementById('interactionPrompt').classList.add('hidden');
                 } else {
-                    // Süre doldu, kaynakları tüket
-                    stats.hull -= activeCrisis.drain.hull; 
-                    stats.oxy -= activeCrisis.drain.oxy; 
-                    stats.pwr -= activeCrisis.drain.pwr;
-                    updateStatsUI();
-                    
-                    if (stats.hull <= 0 || stats.oxy <= 0 || stats.pwr <= 0) {
-                        gameState = 'GAMEOVER'; 
-                        document.getElementById('endScreen').classList.remove('hidden');
-                        return;
+                    // Eğer Kriz varsa ve Grace Period (Müdahale Süresi) bitmediyse geri say
+                    if (crisisGraceTimer > 0) {
+                        crisisGraceTimer--;
+                        if (crisisGraceTimer % 60 === 0) {
+                            let timerUI = document.getElementById('crisisTimerUI');
+                            if(timerUI) {
+                                timerUI.innerText = Math.ceil(crisisGraceTimer / 60);
+                            }
+                        }
+                    } else {
+                        // Süre doldu, kaynakları tüket
+                        stats.hull -= activeCrisis.drain.hull; 
+                        stats.oxy -= activeCrisis.drain.oxy; 
+                        stats.pwr -= activeCrisis.drain.pwr;
+                        updateStatsUI();
+                        
+                        if (stats.hull <= 0 || stats.oxy <= 0 || stats.pwr <= 0) {
+                            gameState = 'GAMEOVER'; 
+                            document.getElementById('endScreen').classList.remove('hidden');
+                            return;
+                        }
                     }
-                }
 
-                let targetRoom = rooms.find(r => r.id === activeCrisis.roomId);
-                let dist = Math.hypot(player.x - targetRoom.termPoint.x, player.y - targetRoom.termPoint.y);
-                
-                if (dist < 100) { 
-                    document.getElementById('interactionPrompt').classList.remove('hidden');
-                    if (ePressed) { 
-                        openMinigame(targetRoom.id); 
+                    let targetRoom = rooms.find(r => r.id === activeCrisis.roomId);
+                    let dist = Math.hypot(player.x - targetRoom.termPoint.x, player.y - targetRoom.termPoint.y);
+                    
+                    if (dist < 100) { 
+                        document.getElementById('interactionPrompt').classList.remove('hidden');
+                        if (ePressed) { 
+                            openMinigame(targetRoom.id); 
+                        }
+                    } else { 
+                        document.getElementById('interactionPrompt').classList.add('hidden'); 
                     }
-                } else { 
-                    document.getElementById('interactionPrompt').classList.add('hidden'); 
                 }
+            } else {
+                // Ay yüzeyi modundayken etkileşim uyarısını gizle
+                document.getElementById('interactionPrompt').classList.add('hidden');
             }
             ePressed = false; 
         }
@@ -1429,14 +1455,16 @@
         ctx.save(); 
         ctx.translate(camX, camY);
         
-        if(mapImage.complete) { 
-            ctx.drawImage(mapImage, 0, 0, mapW, mapH); 
+        let activeMap = maps[currentMap];
+        if(activeMap.img.complete) { 
+            ctx.drawImage(activeMap.img, 0, 0, activeMap.w, activeMap.h); 
         }
         
         // GELİŞTİRİCİ MODU: Çizilen duvarları göster
         if (devMode) {
             ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
             obstacles.forEach(obs => {
+                if (obs.map && obs.map !== currentMap) return;
                 let w = Math.abs(obs.x2 - obs.x1);
                 let h = Math.abs(obs.y2 - obs.y1);
                 if (w > 0 && h > 0) ctx.fillRect(Math.min(obs.x1, obs.x2), Math.min(obs.y1, obs.y2), w, h);
@@ -1525,7 +1553,7 @@
 
     function gameLoop() {
         if (gameState === 'PLAYING') { update(); }
-        if (gameState === 'PLAYING' || gameState === 'MINIGAME' || gameState === 'COUNTDOWN' || gameState === 'STORY') { draw(); }
+        if (gameState !== 'START') { draw(); } // Çizim motorunu donmaması için Start hariç sürekli çalıştır
         requestAnimationFrame(gameLoop);
     }
 </script>
