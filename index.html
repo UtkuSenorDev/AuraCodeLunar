@@ -106,7 +106,7 @@
             <div>🚀 GÖVDE: <span id="stat-hull">100</span>%</div>
             <div>💨 OKSİJEN: <span id="stat-oxy">100</span>%</div>
             <div>⚡ ENERJİ: <span id="stat-pwr">100</span>%</div>
-           // <div class="text-yellow-400 font-bold border-l-2 border-yellow-400 pl-4 ml-2" id="crisisCountUI">ARIZA: 0/5</div>
+            <div class="text-yellow-400 font-bold border-l-2 border-yellow-400 pl-4 ml-2" id="crisisCountUI">ARIZA: 0/5</div>
         </div>
 
         <div class="panel p-2 md:p-4 flex justify-between items-center text-lg md:text-2xl z-10 absolute top-0 left-0 w-full hidden" id="moonStatsPanel">
@@ -200,7 +200,7 @@
     <!-- Bölüm 2 Ekranı -->
     <div id="chapterTwoScreen" class="absolute inset-0 bg-black z-50 flex flex-col items-center justify-center p-8 text-center crt" style="opacity: 0; pointer-events: none; transition: opacity 3s ease-in-out;">
         <h1 id="cinematicText" class="text-4xl md:text-7xl mb-6 text-white font-bold tracking-widest uppercase" style="text-shadow: 0 0 20px #ffffff; transition: opacity 2s ease-in-out; opacity: 0;">AY'A İNİŞ BAŞLIYOR...</h1>
-      //  <p id="cinematicSubText" class="text-3xl text-gray-400 uppercase tracking-widest animate-pulse mt-4" style="transition: opacity 2s ease-in-out; opacity: 0; display: none;">Devam Edecek...</p>
+        <p id="cinematicSubText" class="text-3xl text-gray-400 uppercase tracking-widest animate-pulse mt-4" style="transition: opacity 2s ease-in-out; opacity: 0; display: none;">Devam Edecek...</p>
     </div>
 
     <!-- İniş Mini Oyunu Ekranı -->
@@ -672,16 +672,12 @@
 
                 if (data.type === 'POS') {
                     if (!otherPlayers[data.id]) {
-                        otherPlayers[data.id] = { name: data.name, x: data.x, y: data.y, lastSeen: Date.now(), facing: 'front', moveFrame: 0 };
+                        otherPlayers[data.id] = { name: data.name, x: data.x, y: data.y, targetX: data.x, targetY: data.y, lastSeen: Date.now(), facing: 'front', moveFrame: 0 };
                     } else {
                         let p = otherPlayers[data.id];
-                        let dx = data.x - p.x;
-                        let dy = data.y - p.y;
-                        if (Math.abs(dx) > Math.abs(dy)) p.facing = dx > 0 ? 'right' : 'left';
-                        else if (dy !== 0) p.facing = dy > 0 ? 'front' : 'back';
-                        if (dx !== 0 || dy !== 0) p.moveFrame += 1;
-                        else p.moveFrame = 0;
-                        p.x = data.x; p.y = data.y; p.lastSeen = Date.now();
+                        p.targetX = data.x;
+                        p.targetY = data.y;
+                        p.lastSeen = Date.now();
                     }
                 } 
                 else if (data.type === 'SPAWN_CRISIS') {
@@ -1424,6 +1420,26 @@
                 player.moveFrame = 0;
                 player.lastStepFrame = 0;
             }
+
+            // --- DİĞER OYUNCULARI YUMUŞAK HAREKET ETTİRME (LERP) ---
+            Object.values(otherPlayers).forEach(p => {
+                let pdx = p.targetX - p.x;
+                let pdy = p.targetY - p.y;
+                
+                if (Math.abs(pdx) > 0.5 || Math.abs(pdy) > 0.5) {
+                    p.x += pdx * 0.2; // 0.2 değeri geçişin yumuşaklığını ayarlar
+                    p.y += pdy * 0.2;
+                    
+                    if (Math.abs(pdx) > Math.abs(pdy)) p.facing = pdx > 0 ? 'right' : 'left';
+                    else p.facing = pdy > 0 ? 'front' : 'back';
+                    
+                    p.moveFrame += 0.4;
+                } else {
+                    p.x = p.targetX;
+                    p.y = p.targetY;
+                    p.moveFrame = 0;
+                }
+            });
 
             if (currentMap === 'gemi') {
                 if (!activeCrisis) {
