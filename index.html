@@ -138,7 +138,7 @@
     </div>
 
     <!-- SAĞ: R.E.H.B.E.R PANELİ -->
-    <div class="w-80 panel p-4 flex flex-col side-panel z-10 border-l-0">
+    <div id="rightPanel" class="w-80 panel p-4 flex flex-col side-panel z-10 border-l-0">
         <h2 class="text-2xl mb-4 text-[#33ccff] border-b border-[#33ccff] pb-2 flex items-center justify-between">
             <span>📚 GENERAL INFORMATION</span>
             <span id="connectionStatus" class="text-sm animate-pulse text-yellow-400">BAĞLANIYOR...</span>
@@ -154,6 +154,9 @@
 
         <div id="guideContent" class="text-lg leading-relaxed text-[#33ccff] whitespace-pre-wrap flex-1 overflow-y-auto pb-4"></div>
     </div>
+
+    <!-- AY YÜZEYİ LOG BİLDİRİMLERİ (Tam ekran olunca sağ panelin yerine geçer) -->
+    <div id="moonLogOverlay" class="absolute bottom-8 left-8 w-80 md:w-96 max-h-48 overflow-y-auto z-50 hidden bg-black/60 p-4 border-l-4 border-[#33ccff] pointer-events-auto text-sm md:text-base text-gray-200 shadow-[0_0_15px_rgba(51,204,255,0.2)]"></div>
 
     <!-- MİNİ OYUN OVERLAY -->
     <div id="minigameOverlay" class="hidden absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-4">
@@ -268,11 +271,30 @@
     resize();
 
     function getCamPos() {
-        // Kamera karakteri merkez alıp takip eder
-        return {
-            x: canvas.width / 2 - player.x,
-            y: canvas.height / 2 - player.y
-        };
+        let camX = canvas.width / 2 - player.x;
+        let camY = canvas.height / 2 - player.y;
+
+        // Ay yüzeyinde arka plan siyahlıklarının çıkmasını önlemek için kamerayı kenarlara kilitle
+        if (currentMap === 'ay') {
+            let aw = maps.ay.w;
+            let ah = maps.ay.h;
+            
+            if (canvas.width < aw) {
+                if (camX > 0) camX = 0;
+                else if (camX < canvas.width - aw) camX = canvas.width - aw;
+            } else {
+                camX = (canvas.width - aw) / 2; // Ortala
+            }
+            
+            if (canvas.height < ah) {
+                if (camY > 0) camY = 0;
+                else if (camY < canvas.height - ah) camY = canvas.height - ah;
+            } else {
+                camY = (canvas.height - ah) / 2; // Ortala
+            }
+        }
+
+        return { x: camX, y: camY };
     }
 
     // --- GENEL DURUM & KONTROLLER ---
@@ -302,8 +324,14 @@
             currentMap = currentMap === 'gemi' ? 'ay' : 'gemi';
             if (currentMap === 'gemi') {
                 player.x = 800; player.y = 275;
+                document.getElementById('rightPanel').style.display = 'flex';
+                document.getElementById('moonLogOverlay').classList.add('hidden');
+                setTimeout(resize, 100);
             } else {
                 player.x = 420; player.y = 350;
+                document.getElementById('rightPanel').style.display = 'none';
+                document.getElementById('moonLogOverlay').classList.remove('hidden');
+                setTimeout(resize, 100);
             }
         }
     });
@@ -1278,6 +1306,10 @@
         activeCrisis = null;
         
         document.getElementById('statsPanel').classList.add('hidden'); 
+        document.getElementById('rightPanel').style.display = 'none';
+        document.getElementById('moonLogOverlay').classList.remove('hidden');
+        setTimeout(resize, 100); // Canvas'ın bölünmüş ekrandan tam ekrana geçmesi için yeniden boyutlandır
+
         document.getElementById('moonStatsPanel').classList.remove('hidden');
         document.getElementById('moonStatsPanel').style.display = 'flex';
         
@@ -1313,8 +1345,13 @@
         let moonUI = document.getElementById('moonDataUI');
         if(moonUI) moonUI.innerText = `AY VERİSİ: 0 / 10`;
 
-        guideContent.innerHTML += `\n\n<span class='text-[#33ff33] font-bold text-xl'>\n=== BÖLÜM 3: AY YÜZEYİ ===\nBaşarıyla gemiden çıkıldı. Ay yüzeyinde veri toplamaya ve çevreyi keşfetmeye başlayın.</span>`;
+        let startMsg = `\n\n<span class='text-[#33ff33] font-bold text-xl'>\n=== BÖLÜM 3: AY YÜZEYİ ===\nBaşarıyla gemiden çıkıldı. Ay yüzeyinde veri toplamaya ve çevreyi keşfetmeye başlayın.</span>`;
+        guideContent.innerHTML += startMsg;
         guideContent.scrollTop = guideContent.scrollHeight;
+        
+        let moonLog = document.getElementById('moonLogOverlay');
+        moonLog.innerHTML = startMsg;
+        moonLog.scrollTop = moonLog.scrollHeight;
         
         gameState = 'PLAYING';
     }
@@ -1371,8 +1408,15 @@
         let moonUI = document.getElementById('moonDataUI');
         if(moonUI) moonUI.innerText = `AY VERİSİ: ${globalMoonData} / 10`;
         
-        guideContent.innerHTML += `\n\n<span class='text-[#33ccff]'>[VERİ İLETİLDİ] ${playerName}: ${taskName} (${globalMoonData}/10)</span>`;
+        let logMsg = `\n\n<span class='text-[#33ccff]'>[VERİ İLETİLDİ] ${playerName}: ${taskName} (${globalMoonData}/10)</span>`;
+        guideContent.innerHTML += logMsg;
         guideContent.scrollTop = guideContent.scrollHeight;
+
+        let moonLog = document.getElementById('moonLogOverlay');
+        if(moonLog) {
+            moonLog.innerHTML += logMsg;
+            moonLog.scrollTop = moonLog.scrollHeight;
+        }
 
         if (globalMoonData >= 10 && gameState === 'PLAYING') {
             gameState = 'TRANSMITTING';
@@ -1426,9 +1470,16 @@
                 let pdx = p.targetX - p.x;
                 let pdy = p.targetY - p.y;
                 
-                if (Math.abs(pdx) > 0.5 || Math.abs(pdy) > 0.5) {
-                    p.x += pdx * 0.2; // 0.2 değeri geçişin yumuşaklığını ayarlar
-                    p.y += pdy * 0.2;
+                const distance = Math.hypot(pdx, pdy);
+
+                if (distance > 200) {
+                    // Çok uzaklarsa veya aşırı lag (gecikme) varsa anında ışınla (harita boyu sürüklenme olmasın)
+                    p.x = p.targetX;
+                    p.y = p.targetY;
+                } else if (distance > 1) { 
+                    // Yapay hız kısıtlamasını kaldırdık. %15 LERP ile akıcı ve doğal yetişme.
+                    p.x += pdx * 0.15;
+                    p.y += pdy * 0.15;
                     
                     if (Math.abs(pdx) > Math.abs(pdy)) p.facing = pdx > 0 ? 'right' : 'left';
                     else p.facing = pdy > 0 ? 'front' : 'back';
@@ -1566,20 +1617,23 @@
         let camX = cam.x;
         let camY = cam.y;
 
-        stars.forEach(star => {
-            star.y += star.speed; 
-            if (star.y > canvas.height) { 
-                star.y = 0; 
-                star.x = Math.random() * canvas.width; 
-            }
-            let drawX = (star.x + camX * 0.05) % canvas.width; 
-            if(drawX < 0) drawX += canvas.width;
-            let drawY = (star.y + camY * 0.05) % canvas.height; 
-            if(drawY < 0) drawY += canvas.height;
-            
-            ctx.fillStyle = star.color; 
-            ctx.fillRect(drawX, drawY, star.size, star.size);
-        });
+        // Ay yüzeyinde akan yıldız animasyonunu ve boşluk hissini kaldır
+        if (currentMap === 'gemi') {
+            stars.forEach(star => {
+                star.y += star.speed; 
+                if (star.y > canvas.height) { 
+                    star.y = 0; 
+                    star.x = Math.random() * canvas.width; 
+                }
+                let drawX = (star.x + camX * 0.05) % canvas.width; 
+                if(drawX < 0) drawX += canvas.width;
+                let drawY = (star.y + camY * 0.05) % canvas.height; 
+                if(drawY < 0) drawY += canvas.height;
+                
+                ctx.fillStyle = star.color; 
+                ctx.fillRect(drawX, drawY, star.size, star.size);
+            });
+        }
 
         ctx.save(); 
         ctx.translate(camX, camY);
